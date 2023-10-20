@@ -1,0 +1,169 @@
+---
+title: "链家武汉地区X年X月二手房房价分析报告"
+author: "2023级MEM班-桂元-2023281051019"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: false
+    fig_caption: true
+    latex_engine: xelatex
+    keep_tex: true
+documentclass: ctexart
+header-includes:
+  - \usepackage{setspace}
+  - \setstretch{1.5}
+  - \usepackage{geometry}
+  - \geometry{a4paper, left=2cm, right=2cm, top=2cm, bottom=2cm}
+---
+
+```{r setup, include = FALSE,echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE,error = FALSE, warning = FALSE, message = FALSE,  out.width = "100%", split = FALSE, fig.align = "center")
+options(grDevices.checkFonts = FALSE)
+#load library
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(plotly)
+library(patchwork)
+library(ggrepel)
+library(dplyr)
+library(ggplot2)
+library(showtext)
+showtext_auto(enable = TRUE)
+```
+
+
+# 数据介绍
+
+本报告**链家**数据获取方式如下：
+
+报告人在2023年9月12日获取了[链家武汉二手房网站](https://wh.lianjia.com/ershoufang/)数据。
+
+-   链家二手房网站默认显示100页，每页30套房产，因此本数据包括3000套房产信息；
+
+-   数据包括了页面可见部分的文本信息，具体字段及说明见作业说明。
+
+**说明：**数据仅用于教学；由于不清楚链家数据的展示规则，因此数据可能并不是武汉二手房市场的随机抽样，结论很可能有很大的偏差，甚至可能是错误的。
+
+```{r}
+# 载入数据和预处理
+
+lj202309 <- read_csv("./data/2023-09-12_cleaned.csv")
+# EDA ---------------------------------------------------------------------
+
+## 如下语句可以解决画图中的中文显示问题，当然你可以用showtext包来解决
+
+theme_set(theme(text = element_text(family="Songti SC",size = 10))) #这里family设置成你系统中的中文字体名。
+
+# 做一些数据预处理，比如把字符型变成factor。
+```
+
+
+各变量的简短信息：
+
+```{r}
+glimpse(lj202309)
+```
+
+各变量的简短统计：
+
+```{r}
+summary(lj202309)
+```
+直观结论一：
+总价（price_ttl）的最小值为10.6w，最大值为1380.0w，平均值为155.9w。
+
+直观结论二：
+单价（price_sqm）的最小值为1771，最大值为44656，平均值为15148。
+
+
+# 探索性分析
+## 变量的数值描述与图形1:散点图
+#### 绘制一个基于price_sqm和property_region的散点图，以展示不同的价格分布情况。
+
+
+```{r}
+lj202309 %>% ggplot(aes(x = price_sqm, y = property_region)) +
+  geom_point() +
+  theme_bw(base_family = "wqy-microhei")
+```
+
+结论：
+-各地区房屋分布比例不均衡，汉口地区总体房屋价格较其他地区稍高。
+
+## 变量的数值描述与图形2:箱线图
+#### 绘制一个基于price_sqm和property_region的箱线图，以比较不同地区的价格分布情况。每个地区的箱线图会以不同的颜色进行区分
+
+```{r}
+lj202309  %>% ggplot(aes(price_sqm,color=property_region)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_bw(base_family = "sans")
+```
+
+结论：
+-中北路价格中间值和最大值，都是在整个武汉区域最高
+
+
+## 探索问题1:房屋的建筑面积和房屋单价存在何种关系？
+#### 举例提取光谷广场地区房屋建筑面积和房屋单价的折线图
+```{r}
+# 提取光谷广场的楼盘数据
+lj20309_white_sand <- lj202309 %>%
+  filter(property_region == "光谷广场")
+
+# 按建筑面积和房屋单价分组并计算每组的楼盘数
+grouped_data <- lj20309_white_sand %>%
+  group_by(building_area, price_sqm) %>%
+  summarise(count = n())
+
+# 绘制折线图
+ggplot(grouped_data, aes(x = building_area, y = price_sqm, group = 1)) +
+  geom_line() +
+  labs(x = "建筑面积", y = "房屋单价") +
+  theme_minimal()
+```
+发现：
+
+- 房屋单价在房屋建筑面积为80-90这个区间达到峰值，90-100这个区间达到谷值，小户型的单价在二手市场略优于大面积房型。
+
+
+## 探索问题2:各区域在售二手房分布情况
+#### 绘制各区域房屋分布的柱状图
+```{r}
+# 对于二手房所在区域进行分组计数
+property_region_count <- lj202309 %>% 
+  group_by(property_region) %>% 
+  summarise(sum_property = n())
+
+# 绘制柱状图
+ggplot(property_region_count) +
+  geom_bar(aes(x = sum_property , y = reorder(property_region, sum_property), 
+               color = property_region,fill = property_region),
+           stat = 'identity') +
+  coord_cartesian(ylim = c(0, 90)) +
+  labs(title = "各区域在售二手房分布情况",  x = "在售二手房数量",  y = "区域",
+         caption = "DataSource: lj") +
+  theme(axis.text.x = element_text(family = "sans", face = "bold",
+                                       color = "blue", size = 10), 
+        plot.title = element_text(family = "sans", face = "bold",
+                                color = "blue", size = 15, hjust = 0.5,
+                                vjust = 0,5),
+        legend.position = "none")
+
+```
+
+
+结论：
+-在售二手房数量前5名地区为白沙洲、盘龙城套、四新套、光谷东、金银湖，多为非中心城区。
+
+
+------------------------------------------------------------------------
+
+# 发现总结
+
+-- 二手房屋成交率与多个因素有关，新城区多优于老城区
+
+-- 房屋单价以80-90平方米的小屋型为优，大户型在二手房市场并无明显优势。
+
